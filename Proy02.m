@@ -50,42 +50,36 @@ GDL = (2*nNodos) - Rest;
 display(GDL);
 
 %% Matrices de rigidez de cada elemento
-k = zeros(2*nElementos);
-ele = 1
-for i = 1:2:(2*nElementos)
-    j = i;
-    k(i,j) = Es*As/longEle(ele,2);
-    k(i, j+1) = -Es*As/longEle(ele,2);
-    k(i+1,j+1) = k(i,j);
-    k(i+1,j) = k(i, j+1);
-    ele = ele +1;
+k = zeros(2,2, nElementos);
+eleContador = 1;
+while eleContador <= nElementos;
+    i = 1;
+    while i < 2
+        j = i;
+        k(i,j,eleContador) = Es*As/longEle(eleContador,2);
+        k(i, j+1,eleContador) = -Es*As/longEle(eleContador,2);
+        k(i+1,j+1,eleContador) = k(i,j,eleContador);
+        k(i+1,j,eleContador) = k(i, j+1,eleContador);
+        i = i+1;
+    end
+    eleContador = eleContador +1;
 end
-
+%%
 %Matriz de transformacion T
-a = nElementos*4; b = nElementos*2;
-T = zeros(a,b); %Matriz de transformacion para guardarla en un solo espacio de memoria
-ele = 1;
-j = 1
-for i = 1:4:a
-    T(i,j) = cosEle(ele);
-    T(i+1,j) = senEle(ele);
-    T(i+2,j+1) = T(i,j);
-    T(i+3,j+1) = T(i+1,j);
-    j = j + 2;
-    ele = ele + 1;
+a = 4; b = 2; %Variables que definen las dimensiones del vector Transformacion
+T = zeros(a,b,nElementos); %Matriz de transformacion para guardarla en un solo espacio de memoria
+for i = 1:nElementos
+    T(1,1,i) = cosEle(i);
+    T(2,1,i) = senEle(i);
+    T(3,2,i) = T(1,1,i);
+    T(4,2,i) = T(2,1,i);
 end
 
 %Matriz de Rigidez Transformada a coordenadas Globales
-aux = 4*nElementos;
-kG = zeros(aux);
-aux1 = 1;
-aux2 = 1;
-auy1 = 1;
-for i = 1:4:aux
-    kG(i:3+i,i:3+i) = T(aux1:aux1+3,auy1:auy1+1)*(k(aux2:aux2+1,aux2:aux2+1)*T(aux1:aux1+3,auy1:auy1+1)')
-    aux1 = aux1 + 4;
-    auy1 = auy1 + 2;
-    aux2 = aux2 + 2;
+aux = 4;
+kG = zeros(aux,aux,nElementos);
+for i = 1:nElementos
+    kG(:,:,i) = T(:,:,i)*(k(:,:,i)*T(:,:,i)');
 end
 
 %Vector de restricciones R
@@ -101,19 +95,24 @@ for i = 1:2*nNodos
     end
 end
 
+%%
 aux = 1;
 gdlNodo = 4; %GDL por barra || Se consideran dos coordenadas por nodo
 dimXY = gdlNodo + 1; %Se adiciona una fila y columna que contendra el id de la coordenada global
 GlobalK = zeros(dimXY,dimXY,nElementos);
 coordElemIJ = zeros(1,dimXY);
+uEle = zeros(2,2,nElementos); %Instancio la variable donde se va guardaran los resultados
+pELe = uEle;
 iMatriz = 1;
 while aux <= nElementos
     auxI = [2*idEleNodos(aux,2)-1 2*idEleNodos(aux,2)];
     auxJ = [2*idEleNodos(aux,3)-1 2*idEleNodos(aux,3)];
     GlobalK(1,:,aux) = [0 auxI auxJ];
     GlobalK(:,1,aux) = GlobalK(1,:,aux)';
-    GlobalK(2:end,2:end,aux) = kG(iMatriz:iMatriz+3,iMatriz:iMatriz+3);
-    iMatriz = iMatriz + 4;
+    GlobalK(2:end,2:end,aux) = kG(:,:,aux);
+    auxNodo = [idEleNodos(aux,2) idEleNodos(aux, 3)];
+    uEle(:,1,aux) = auxNodo';
+    pEle(:,1,aux) = auxNodo';
     aux = aux +1;
 end
 
@@ -159,10 +158,12 @@ for i = 1:2*nNodos
     end
 end
 
-Ue = zeros(gdlNodo,2,nElementos);
-peGlobal = zeros(gdlNodo, 2, nElementos);
-i = 1;
-iMatriz = 1;
+
+Ue = zeros(gdlNodo,2,nElementos); %Desplazamientos nodales Coordenadas globales
+peGlobal = zeros(gdlNodo, 2, nElementos); %Esfuerzos en las barras en Coordenadas globales
+i = 1; %Variable auxiliar que sirve de contador
+iMatriz = 1; %Variable auxiliar que sirve para armar los vectores de esfuerzos en las barras
+
 while i <= nElementos
         auxI = [2*idEleNodos(i,2)-1 2*idEleNodos(i,2)];
         auxJ = [2*idEleNodos(i,3)-1 2*idEleNodos(i,3)];
@@ -171,6 +172,8 @@ while i <= nElementos
         Ue(:,1,i) = idUe';
         Ue(:,2,i) = D([Ue(:,1,i)],2);
         peGlobal(:,2,i) = kG(iMatriz:iMatriz+3,iMatriz:iMatriz+3)*Ue(:,2,i);
+        uEle(:,2, i) = T(:,:,i)'*Ue(:,2,i); %Deformaciones en las barras Coordenadas Locales
+        peEle(:,2,i) = k(:,:,i)*uEle(:,2,i); %Calculo de esfuerzo en las barras Coordenadas Locales
         iMatriz = iMatriz + 4;
         i = i + 1;
 end
@@ -201,7 +204,3 @@ for i = 1:length(idR)
     %fextR = find(fR(:,1) == auxR);
     %pR(i,2) = pR(i,2) + fextR;
 end
-
-%% Esfuerzos en los elementos
-
-
