@@ -1,17 +1,11 @@
 %% Datos de entradas
-clc, clear all, close all
-nNodos = 4; %Numero de nodos que conforman la cercha
-% nElementosPrincipales = 31;
-% nElementosSecundarios = 18;
-% nElementosTotales = nElementosPrincipales + nElementosSecundarios; %Numero de elementos totales que conforman la cercha
-nElementos = 6; %Numero de elementos
-% ACordonesBorde = 7610; %Area para los cordones de borde [cm2]
-% AZonaApoyo = 9480; %Area para las barra que conforman el triangulo en la zona de apoyo [cm2]
-% ASecundarias = 900; %Area para las barras del tejido [cm2]
-As = 100; %area seccion transversal de los elementos [cm2]
+%Script que sirve para el calculo de cerchas ingresando las coordenadas de
+%los nodos, propiedades de los materiales, restricciones en el id del nodo
+%correspondiente y cargas externas
 
-Es = 2500; %Modulo de elasticidad del acero [tonf/cm2]
-%Em = 1.5e5; %Modulo de elasticidad de la madera (tejido)
+clc, clear all, close all
+nNodos = input('Introducir el numero de nodos que conforman la cercha: '); %Numero de nodos que conforman la cercha
+nElementos = input('Numero de elementos: '); %Numero de elementos
 
 %Coordenadas de los nodos
 coordNodos = zeros(nNodos,3);
@@ -24,6 +18,8 @@ end
 
 idEleNodos = zeros(nElementos,3);
 longEle = zeros(nElementos,2);
+Es = zeros(nElementos,2);
+As = zeros(nElementos,2);
 cosEle = zeros(1, nElementos);
 senEle = zeros(1, nElementos);
 for i = 1:nElementos
@@ -35,15 +31,17 @@ for i = 1:nElementos
     idEleNodos(i,3) = nodoJ; %id del nodo J para el elemento
     dX = coordNodos(nodoJ,2) - coordNodos(nodoI,2);
     dY = coordNodos(nodoJ,3) - coordNodos(nodoI,3);
-    longEle(i,1) = i; 
+    longEle(i,1) = i;
+    Es(i,1) = i;
+    As(i,1) = i;
+    Es(i,2) = input('Introducir Modulo de elasticidad del elemento: ');
+    As(i,2) = input('Introducir Area de la seccion: ');
     longEle(i,2) = sqrt(power(dX,2)+power(dY,2));
     cosEle(i) = dX./longEle(i,2);
     senEle(i) = dY./longEle(i,2);
 end
 
-display(longEle);  display(cosEle); display(senEle);
-
-%% Calculo de Grados de Hipergeometria
+%% Calculo de Grados de Libertad
 idR = input('Introducir el Id de las coordenadas globales que se restriguen: ');
 Rest = length(idR); %Numero de restricciones en nodos
 GDL = (2*nNodos) - Rest;
@@ -56,8 +54,8 @@ while eleContador <= nElementos;
     i = 1;
     while i < 2
         j = i;
-        k(i,j,eleContador) = Es*As/longEle(eleContador,2);
-        k(i, j+1,eleContador) = -Es*As/longEle(eleContador,2);
+        k(i,j,eleContador) = Es(eleContador,2)*As(eleContador,2)/longEle(eleContador,2);
+        k(i, j+1,eleContador) = -Es(eleContador,2)*As(eleContador,2)/longEle(eleContador,2);
         k(i+1,j+1,eleContador) = k(i,j,eleContador);
         k(i+1,j,eleContador) = k(i, j+1,eleContador);
         i = i+1;
@@ -102,7 +100,7 @@ dimXY = gdlNodo + 1; %Se adiciona una fila y columna que contendra el id de la c
 GlobalK = zeros(dimXY,dimXY,nElementos);
 coordElemIJ = zeros(1,dimXY);
 uEle = zeros(2,2,nElementos); %Instancio la variable donde se va guardaran los resultados
-pELe = uEle;
+pEle = uEle;
 iMatriz = 1;
 while aux <= nElementos
     auxI = [2*idEleNodos(aux,2)-1 2*idEleNodos(aux,2)];
@@ -158,7 +156,6 @@ for i = 1:2*nNodos
     end
 end
 
-
 Ue = zeros(gdlNodo,2,nElementos); %Desplazamientos nodales Coordenadas globales
 peGlobal = zeros(gdlNodo, 2, nElementos); %Esfuerzos en las barras en Coordenadas globales
 i = 1; %Variable auxiliar que sirve de contador
@@ -171,36 +168,44 @@ while i <= nElementos
         peGlobal(:,1,i) = idUe';
         Ue(:,1,i) = idUe';
         Ue(:,2,i) = D([Ue(:,1,i)],2);
-        peGlobal(:,2,i) = kG(iMatriz:iMatriz+3,iMatriz:iMatriz+3)*Ue(:,2,i);
+        peGlobal(:,2,i) = kG(:,:,i)*Ue(:,2,i);
         uEle(:,2, i) = T(:,:,i)'*Ue(:,2,i); %Deformaciones en las barras Coordenadas Locales
-        peEle(:,2,i) = k(:,:,i)*uEle(:,2,i); %Calculo de esfuerzo en las barras Coordenadas Locales
-        iMatriz = iMatriz + 4;
+        pEle(:,2,i) = k(:,:,i)*uEle(:,2,i); %Calculo de esfuerzo en las barras Coordenadas Locales
         i = i + 1;
 end
+
 %%
 %Reacciones 
-pR = zeros(length(idR), 2);
-fR = zeros(2*nNodos,2);
-fR(:,1) = 1:2*nNodos;
-pR(:,1) = idR';
-for i = 1:length(fR)
-    auxR = idR(i);
-    if find(fR(i,1) == auxR)
-        aux = find(fR(i,1) == auxR);
-        fR(i,2) = F(auxR, 2);
+pR = zeros(2*nNodos, 2); %Vector donde se guardaran las reacciones en los nodos correspondientes
+fR = 0; %Variable auxiliar para guardar en cada paso de tiempo el valor de las fuerzas internas dentro de cada elemento
+pR(:,1) = 1:2*nNodos;
+j = 1;
+while j <= nElementos
+    for r = 1:length(peGlobal(:,1,1))
+            auxR = peGlobal(r,1,j); %Ubicacion de la posicion de la hipermatriz con respecto a las fuerzas internas de cada elemento
+            fR = peGlobal(r,2,j); %Actualizo vector de fuerza interna para utilizar y calcular las reacciones
+            pR(auxR,2) = pR(auxR,2) + fR;
     end
-end
-
-for i = 1:length(idR)
-    auxR = idR(i);
-    j = 1;
-    while j <= nElementos
-        if find(peGlobal(:,1, j) == auxR)
-            aux = find(peGlobal(:,1, j) == auxR);
-            pR(i,2) = peGlobal(aux,2,j) + pR(i,2); %Calculo el vector de reacciones
-        end
         j = j + 1;
-    end
-    %fextR = find(fR(:,1) == auxR);
-    %pR(i,2) = pR(i,2) + fextR;
 end
+pR = pR(idR',:); %Actualizo vector de reacciones de acuerdo a las coordenadas restringidas
+
+%% Presentacion de los resultados
+%Tabla resumen resultados esfuerzos internos y deformaciones en cada barra
+resDef = zeros(nElementos,3); %Matriz resumen
+resEsf = zeros(nElementos, 5);
+resDef(:,1) = 1:nElementos;
+resEsf(:,1) = resDef(:,1);
+for i = 1:nElementos
+    resEsf(i,2) = pEle(1,2,i);
+    resEsf(i,3) = pEle(2,2,i);
+    resDef(i,2) = Ue(1,2,i);
+    resDef(i,3) = Ue(2,2,i);
+    resDef(i,4) = Ue(3,2,i);
+    resDef(i,5) = Ue(4,2,i);
+end
+ 
+tablaEsf = table([resEsf(:,1), resEsf(:,2), resEsf(:,3)],'variableNames', {['idEle ', 'N_i [Kgf]', ' N_j [Kgf]']});
+tablaDef = table([resDef(:,1), resDef(:,2), resDef(:,3), resDef(:,4), resDef(:,5)],'variableNames', {['idEle ', 'U_ix [m]', ' U_iy [m] ', 'U_jx [m]', ' U_jy [m]']});
+tablaReacciones = table([pR(:,1), pR(:,2)], 'variableNames', {['GDL ', ' Reac [Kgf]']});
+display(tablaEsf); display(tablaDef); display(tablaReacciones);
