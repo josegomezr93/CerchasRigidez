@@ -8,7 +8,7 @@ nNodos = input('Introducir el numero de nodos que conforman la cercha: '); %Nume
 nElementos = input('Numero de elementos: '); %Numero de elementos
 
 %Coordenadas de los nodos
-coordNodos = zeros(nNodos,3);
+coordNodos = zeros(nNodos,3); %Matriz donde se guarda la informacion de las coordenadas X e Y de cada nodo ingresado
 for i = 1:nNodos
     fprintf('Coordenadas del nodo %i \n',i);
     coordNodos(i,1) = i; %Identificador del nodo
@@ -22,6 +22,7 @@ Es = zeros(nElementos,2);
 As = zeros(nElementos,2);
 cosEle = zeros(1, nElementos);
 senEle = zeros(1, nElementos);
+mConectividad = zeros(2,3,nElementos);
 for i = 1:nElementos
     fprintf('Elemento %i \n', i);
     nodoI = input('Introducir el id del nodo inicial del elemento: ');
@@ -29,6 +30,9 @@ for i = 1:nElementos
     idEleNodos(i,1) = i; %id del elemento
     idEleNodos(i,2) = nodoI; %id del nodo I para el elemento
     idEleNodos(i,3) = nodoJ; %id del nodo J para el elemento
+    mConectividad(:,1,i) = [nodoI; nodoJ];
+    mConectividad(1,2:3,i) = [coordNodos(nodoI,2) coordNodos(nodoI,3)];
+    mConectividad(2,2:3,i) = [coordNodos(nodoJ,2) coordNodos(nodoJ,3)];
     dX = coordNodos(nodoJ,2) - coordNodos(nodoI,2);
     dY = coordNodos(nodoJ,3) - coordNodos(nodoI,3);
     longEle(i,1) = i;
@@ -209,3 +213,22 @@ tablaEsf = table([resEsf(:,1), resEsf(:,2), resEsf(:,3)],'variableNames', {['idE
 tablaDef = table([resDef(:,1), resDef(:,2), resDef(:,3), resDef(:,4), resDef(:,5)],'variableNames', {['idEle ', 'U_ix [m]', ' U_iy [m] ', 'U_jx [m]', ' U_jy [m]']});
 tablaReacciones = table([pR(:,1), pR(:,2)], 'variableNames', {['GDL ', ' Reac [Kgf]']});
 display(tablaEsf); display(tablaDef); display(tablaReacciones);
+
+
+%% Graficas
+mConectividadDef = zeros(2,3,nElementos); %Matriz de conectividad que tendra la información en cuanto a la deformada de los nodos
+DefNodos = mConectividadDef; %Matriz con todas las coordenadas de los nodos deformados (mConectividad + mConectividadDef)
+DefNodos(:,1,:) = mConectividad(:,1,:);
+fEscala = input('Introducir factor escala para deformada: '); %Factor escala que se utilizara para representar los puntos deformados
+figure()
+for i = 1:nElementos
+    hold on
+	strOriginal = plot(mConectividad(:,2,i),mConectividad(:,3,i),'linestyle','--','color','red');
+    mConectividadDef(:,1,i) = mConectividad(:,1,i);
+	mConectividadDef(:,2,i) = Ue([1 3],2,i);
+	mConectividadDef(:,3,i) = Ue([2 4],2,i);
+	DefNodos(:,2,i) = mConectividad(:,2,i) + fEscala*mConectividadDef(:,2,i);
+	DefNodos(:,3,i) = mConectividad(:,3,i) + fEscala*mConectividadDef(:,3,i);
+	strDef = plot(DefNodos(:,2,i),DefNodos(:,3,i),'c*');
+end
+legend('Estructura Original','Def'); title('Estructura');
